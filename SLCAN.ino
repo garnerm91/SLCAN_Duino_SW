@@ -39,30 +39,32 @@ void Can2Serial() {
     char buf[CMD_LEN];
     char *p = buf;
     
-    // Format message according to SLCAN protocol
-    if (canMsg.can_id & CAN_EFF_FLAG) {
+    // Detect extended frame correctly
+    bool isExtended = (canMsg.can_id & CAN_EFF_FLAG) || (canMsg.can_id > 0x7FF);
+
+    if (isExtended) {
       *p++ = 'T'; // Extended frame
-      // Properly format 8-character extended ID
-      uint32_t id = canMsg.can_id & CAN_EFF_MASK;
-      p += sprintf(p, "%08lX", id);
+      uint32_t id = canMsg.can_id & CAN_EFF_MASK; // Only 29 bits
+      p += sprintf(p, "%08lX", id); // Exactly 8 hex digits
     } else {
       *p++ = 't'; // Standard frame
-      p += sprintf(p, "%03X", canMsg.can_id & CAN_SFF_MASK);
+      uint32_t id = canMsg.can_id & CAN_SFF_MASK; // Only 11 bits
+      p += sprintf(p, "%03X", id); // Exactly 3 hex digits
     }
     
     // Add DLC (data length code)
-    p += sprintf(p, "%1X", canMsg.can_dlc);
-    
-    // Add data bytes (only if not RTR frame)
+    p += sprintf(p, "%1X", canMsg.can_dlc & 0xF); // 0-8
+
+    // Add data bytes if not RTR
     if (!(canMsg.can_id & CAN_RTR_FLAG)) {
-      for (int i = 0; i < canMsg.can_dlc; i++) {
+      for (uint8_t i = 0; i < canMsg.can_dlc; i++) {
         p += sprintf(p, "%02X", canMsg.data[i]);
       }
     }
     
-    *p++ = '\r'; // SLCAN uses \r only
-    *p = '\0';
-    
+    *p++ = 0x0D; // SLCAN terminator
+    *p = '\0';   // Null-terminate string
+
     Serial.print(buf);
   }
 }
