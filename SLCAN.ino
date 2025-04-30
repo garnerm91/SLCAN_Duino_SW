@@ -7,6 +7,7 @@ Garner M
 2025
 Arduino-based SLCAN. This build is for SWCAN GMLAN.
 V0.1 Work in progress
+V0.2 Send Frame Function now works
 */
 #include <SPI.h>
 #include <mcp2515.h>
@@ -149,7 +150,6 @@ void pars_slcancmd(char *buf) {
   }
 }
 
-// Send CAN message from SLCAN command !!!!untested!!!1!
 void send_canmsg(char *buf) {
   struct can_frame frame;
   memset(&frame, 0, sizeof(frame));
@@ -159,26 +159,40 @@ void send_canmsg(char *buf) {
   bool isRTR = (buf[0] == 'r' || buf[0] == 'R');
   
   // Parse ID
+  char idStr[9] = {0};
+  int dlc_pos;
+  
   if (isExtended) {
-    uint32_t id;
-    sscanf(buf+1, "%8X", &id);
-    frame.can_id = id | CAN_EFF_FLAG;
+    strncpy(idStr, buf+1, 8); // Get 8-character ID
+    frame.can_id = strtoul(idStr, NULL, 16) | CAN_EFF_FLAG;
+    dlc_pos = 9; // DLC position for extended frames
   } else {
-    uint32_t id;
-    sscanf(buf+1, "%3X", &id);
-    frame.can_id = id;
+    strncpy(idStr, buf+1, 3); // Get 3-character ID
+    frame.can_id = strtoul(idStr, NULL, 16);
+    dlc_pos = 4; // DLC position for standard frames
   }
   
   // Parse DLC (data length code)
-  int dlc_pos = isExtended ? 9 : 4;
-  uint8_t dlc;
-  sscanf(buf+dlc_pos, "%1X", &dlc);
-  frame.can_dlc = dlc > 8 ? 8 : dlc;
+  if (strlen(buf) > dlc_pos) {
+    frame.can_dlc = buf[dlc_pos] - '0';
+    if (frame.can_dlc > 8) frame.can_dlc = 8;
+  } else {
+    frame.can_dlc = 0;
+  }
   
-  // Parse data bytes (if not RTR)
-  if (!isRTR) {
-    for (int i = 0; i < frame.can_dlc; i++) {
-      sscanf(buf+dlc_pos+1+i*2, "%2X", &frame.data[i]);
+  // Set RTR flag if needed
+  if (isRTR) {
+    frame.can_id |= CAN_RTR_FLAG;
+  }
+  // Parse data bytes (if not RTR and data exists)
+  else if (strlen(buf) > dlc_pos + 1) {
+    int dataStart = dlc_pos + 1;
+    int dataLen = strlen(buf) - dataStart;
+    
+    for (int i = 0; i < frame.can_dlc && (i*2) < dataLen; i++) {
+      char byteStr[3] = {0};
+      strncpy(byteStr, buf + dataStart + (i*2), 2);
+      frame.data[i] = strtoul(byteStr, NULL, 16);
     }
   }
   
