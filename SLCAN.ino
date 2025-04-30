@@ -135,7 +135,7 @@ void pars_slcancmd(char *buf) {
       break;
       
     case 'V': // Version
-      Serial.print("GM_SLCAN_1.0");
+      Serial.print("BrokenSLCANV.2");
       slcan_ack();
       break;
       
